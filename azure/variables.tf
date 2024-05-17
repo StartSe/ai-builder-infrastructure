@@ -77,3 +77,24 @@ variable "database_container_app_host" {
 variable "database_server_name" {
   description = "value of the database server name"
 }
+
+variable "database_path" {
+  description = "value of the database path"
+}
+
+variable "apikey_path" {
+  description = "value of the apikey path"
+}
+
+variable "secretkey_path" {
+  description = "value of the secretkey path"
+}
+
+variable "log_path" {
+  description = "value of the log path"
+}
+
+variable "blob_storage_path" {
+  description = "value of the blob storage path"
+}
+
