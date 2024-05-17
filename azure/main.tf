@@ -9,7 +9,7 @@ resource "azurerm_resource_group" "rg_prod" {
 
 resource "azurerm_postgresql_flexible_server" "pg_ai_builder" {
   depends_on          = [azurerm_resource_group.rg_prod]
-  name                = var.database_host
+  name                = var.database_server_name
   zone                = "1"
   location            = azurerm_resource_group.rg_prod.location
   resource_group_name = azurerm_resource_group.rg_prod.name

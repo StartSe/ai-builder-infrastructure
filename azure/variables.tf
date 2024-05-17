@@ -58,10 +58,6 @@ variable "source_image" {
   description = "value of the flowise image"
 }
 
-variable "database_host" {
-  description = "value of the database host"
-}
-
 variable "database_name" {
   description = "value of the database name"
 }
@@ -76,4 +72,8 @@ variable "database_port" {
 
 variable "database_container_app_host" {
   description = "value of the database container app host"
+}
+
+variable "database_server_name" {
+  description = "value of the database server name"
 }
