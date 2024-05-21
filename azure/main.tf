@@ -3,36 +3,35 @@ provider "azurerm" {
 }
 
 resource "azurerm_resource_group" "rg_prod" {
-  name              = var.resource_group_name
-  location          = var.location
-}
-
-resource "azurerm_container_app_environment" "cae_ai_builder" {
-  depends_on          = [azurerm_resource_group.rg_prod]
-  name                = var.container_environment_name
-  location            = azurerm_resource_group.rg_prod.location
-  resource_group_name = azurerm_resource_group.rg_prod.name
-
-  tags = {}
+  name     = var.resource_group_name
+  location = var.location
 }
 
 resource "azurerm_storage_account" "this" {
-  name                     = "builderstoragestartse"
+  name                     = "aimaxprodstorage"
   resource_group_name      = azurerm_resource_group.rg_prod.name
   location                 = azurerm_resource_group.rg_prod.location
   account_tier             = "Standard"
   account_replication_type = "GRS"
   min_tls_version          = "TLS1_2"
   depends_on               = [azurerm_resource_group.rg_prod]
-
 }
+
 resource "azurerm_storage_share" "share" {
   name                 = "storageshare"
-  quota                = "200"
+  quota                = "1"
   storage_account_name = azurerm_storage_account.this.name
-  depends_on           = [azurerm_storage_account.this]
+  depends_on           = [azurerm_resource_group.rg_prod, azurerm_storage_account.this]
 }
 
+resource "azurerm_container_app_environment" "cae_ai_builder" {
+  depends_on          = [azurerm_resource_group.rg_prod, azurerm_storage_account.this, azurerm_storage_share.share]
+  name                = var.container_environment_name
+  location            = azurerm_resource_group.rg_prod.location
+  resource_group_name = azurerm_resource_group.rg_prod.name
+
+  tags = {}
+}
 
 resource "azurerm_container_app_environment_storage" "this" {
   name                         = "mycontainerappstorage"
@@ -41,14 +40,11 @@ resource "azurerm_container_app_environment_storage" "this" {
   share_name                   = azurerm_storage_share.share.name
   access_key                   = azurerm_storage_account.this.primary_access_key
   access_mode                  = "ReadWrite"
-  depends_on                   = [azurerm_storage_account.this, azurerm_container_app_environment.cae_ai_builder, azurerm_storage_share.share]
+  depends_on                   = [azurerm_storage_account.this, azurerm_storage_share.share, azurerm_container_app_environment.cae_ai_builder]
 }
 
-
-
-
 resource "azurerm_container_app" "ca_ai_builder" {
-  depends_on                   = [azurerm_resource_group.rg_prod, azurerm_container_app_environment.cae_ai_builder, azurerm_container_app_environment_storage.this, azurerm_storage_share.share]
+  depends_on                   = [azurerm_resource_group.rg_prod, azurerm_container_app_environment.cae_ai_builder, azurerm_container_app_environment_storage.this, azurerm_storage_account.this, azurerm_storage_share.share]
   name                         = var.project_name
   container_app_environment_id = azurerm_container_app_environment.cae_ai_builder.id
   resource_group_name          = azurerm_resource_group.rg_prod.name
@@ -113,18 +109,13 @@ resource "azurerm_container_app" "ca_ai_builder" {
         value = var.secretkey_path
       }
       env {
-
-        name  = "LOG_PATH"
-        value = var.log_path
-      }
-      env {
         name  = "BLOB_STORAGE_PATH"
         value = var.blob_storage_path
       }
       volume_mounts {
         name = azurerm_storage_share.share.name
 
-        path = "/${azurerm_storage_share.share.name}"
+        path = "/opt/flowise/"
       }
     }
     volume {
