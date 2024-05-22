@@ -7,175 +7,100 @@ resource "azurerm_resource_group" "rg_prod" {
   location = var.location
 }
 
-resource "azurerm_postgresql_flexible_server" "pg_ai_builder" {
-  depends_on          = [azurerm_resource_group.rg_prod]
-  name                = var.database_server_name
-  zone                = "1"
-  location            = azurerm_resource_group.rg_prod.location
+resource "azurerm_storage_account" "this" {
+  name                     = "builderstoragestartse"
+  resource_group_name      = azurerm_resource_group.rg_prod.name
+  location                 = azurerm_resource_group.rg_prod.location
+  account_tier             = "Standard"
+  account_replication_type = "GRS"
+  min_tls_version          = "TLS1_2"
+  depends_on               = [azurerm_resource_group.rg_prod]
+
+}
+resource "azurerm_storage_share" "share" {
+  name                 = "storageshare"
+  quota                = "1"
+  storage_account_name = azurerm_storage_account.this.name
+  depends_on           = [azurerm_storage_account.this]
+}
+
+resource "azurerm_container_group" "flowise" {
+  name                = var.project_name
   resource_group_name = azurerm_resource_group.rg_prod.name
-
-  version                = "12"
-  administrator_login    = var.postgres_admin
-  administrator_password = var.postgres_password
-
-  sku_name              = "B_Standard_B1ms"
-  storage_mb            = "32768"
-  backup_retention_days = 7
-}
-
-resource "azurerm_postgresql_flexible_server_database" "builder_database" {
-  depends_on = [azurerm_resource_group.rg_prod, azurerm_postgresql_flexible_server.pg_ai_builder]
-  name       = var.database_name
-  charset    = "UTF8"
-  collation  = "en_US.utf8"
-  server_id  = azurerm_postgresql_flexible_server.pg_ai_builder.id
-}
-
-resource "azurerm_postgresql_flexible_server_firewall_rule" "pg_firewall" {
-  name             = "AllowAll"
-  server_id        = azurerm_postgresql_flexible_server.pg_ai_builder.id
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "255.255.255.255"
-}
-
-resource "azurerm_postgresql_flexible_server_configuration" "pg_config_azure_extensions" {
-  name      = "azure.extensions"
-  server_id = azurerm_postgresql_flexible_server.pg_ai_builder.id
-  value     = "VECTOR,UUID-OSSP,VECTOR"
-}
-
-resource "azurerm_postgresql_flexible_server_configuration" "pg_config_azure_max_connections" {
-  name      = "max_connections"
-  server_id = azurerm_postgresql_flexible_server.pg_ai_builder.id
-  value     = 80
-}
-
-resource "azurerm_postgresql_flexible_server_configuration" "pg_config_azure_max_parallel_maintenance_workers" {
-  name      = "max_parallel_maintenance_workers"
-  server_id = azurerm_postgresql_flexible_server.pg_ai_builder.id
-  value     = 64
-}
-
-resource "azurerm_postgresql_flexible_server_configuration" "pg_config_azure_pg_qs_query_capture_mode" {
-  name      = "pg_qs.query_capture_mode"
-  server_id = azurerm_postgresql_flexible_server.pg_ai_builder.id
-  value     = "ALL"
-}
-
-resource "azurerm_postgresql_flexible_server_configuration" "pg_config_azure_pgms_wait_sampling_query_capture_mode" {
-  name      = "pgms_wait_sampling.query_capture_mode"
-  server_id = azurerm_postgresql_flexible_server.pg_ai_builder.id
-  value     = "ALL"
-}
-
-resource "azurerm_postgresql_flexible_server_configuration" "pg_config_azure_require_secure_transport" {
-  name      = "require_secure_transport"
-  server_id = azurerm_postgresql_flexible_server.pg_ai_builder.id
-  value     = "OFF"
-}
-
-resource "azurerm_postgresql_flexible_server_configuration" "pg_config_track_io_timing" {
-  name      = "track_io_timing"
-  server_id = azurerm_postgresql_flexible_server.pg_ai_builder.id
-  value     = "ON"
-}
-
-resource "azurerm_container_app_environment" "cae_ai_builder" {
-  depends_on          = [azurerm_resource_group.rg_prod]
-  name                = var.container_environment_name
   location            = azurerm_resource_group.rg_prod.location
-  resource_group_name = azurerm_resource_group.rg_prod.name
+  ip_address_type     = "Public"
+  os_type             = "Linux"
+  dns_name_label      = var.project_name
+  exposed_port = [
+    {
+      port     = 80
+      protocol = "TCP"
+    },
+    {
+      port     = 443
+      protocol = "TCP"
+    }
+  ]
 
-  tags = {}
-}
+  container {
+    name   = var.container_app_name
+    image  = var.source_image
+    cpu    = "0.5"
+    memory = "1.5"
 
+    commands = [
+      "/bin/sh",
+      "-c",
+      "pnpm start"
+    ]
+    ports {
+      port     = 3000
+      protocol = "TCP"
+    }
+    environment_variables = {
+      PORT                        = 3000
+      PASSPHRASE                  = var.passphrase
+      LOG_LEVEL                   = "DEBUG"
+      FLOWISE_USERNAME            = var.flowise_username
+      FLOWISE_PASSWORD            = var.flowise_password
+      OVERRIDE_DATABASE           = false
+      DEBUG                       = true
+      FLOWISE_SECRETKEY_OVERWRITE = var.flowise_secretkey_overwrite
+      DATABASE_PATH               = var.database_path
+      APIKEY_PATH                 = var.apikey_path
+      SECRETKEY_PATH              = var.secretkey_path
+      BLOB_STORAGE_PATH           = var.blob_storage_path
+      FLOWISE_USERNAME            = var.flowise_username
+      FLOWISE_PASSWORD            = var.flowise_password
+      PASSPHRASE                  = var.passphrase
+      TESTE                       = "TESTE"
+    }
 
-resource "azurerm_container_app" "ca_ai_builder" {
-  depends_on = [azurerm_resource_group.rg_prod, azurerm_postgresql_flexible_server.pg_ai_builder,azurerm_postgresql_flexible_server_database.builder_database,azurerm_container_app_environment.cae_ai_builder,azurerm_postgresql_flexible_server_configuration.pg_config_track_io_timing,azurerm_postgresql_flexible_server_configuration.pg_config_azure_require_secure_transport,azurerm_postgresql_flexible_server_configuration.pg_config_azure_pgms_wait_sampling_query_capture_mode,azurerm_postgresql_flexible_server_configuration.pg_config_azure_pg_qs_query_capture_mode,azurerm_postgresql_flexible_server_configuration.pg_config_azure_max_parallel_maintenance_workers,azurerm_postgresql_flexible_server_configuration.pg_config_azure_max_connections,azurerm_postgresql_flexible_server_configuration.pg_config_azure_extensions,azurerm_postgresql_flexible_server_firewall_rule.pg_firewall]
-  name                         = var.project_name
-  container_app_environment_id = azurerm_container_app_environment.cae_ai_builder.id
-  resource_group_name          = azurerm_resource_group.rg_prod.name
-  revision_mode                = "Single"
-
-  tags = {
-    Environment = "Prod"
-    Tier        = "web"
-  }
-
-  template {
-    min_replicas = 1
-    max_replicas = 1
-    container {
-      name   = var.container_app_name
-      image  = var.source_image
-      cpu    = 0.25
-      memory = "0.5Gi"
-      env {
-        name  = "PORT"
-        value = "3000"
-      }
-      env {
-        name  = "PASSPHRASE"
-        value = var.passphrase
-      }
-      env {
-        name  = "LOG_LEVEL"
-        value = "DEBUG"
-      }
-      env {
-        name  = "FLOWISE_USERNAME"
-        value = var.flowise_username
-      }
-      env {
-        name  = "FLOWISE_PASSWORD"
-        value = var.flowise_password
-      }
-      env {
-        name  = "DATABASE_TYPE"
-        value = "postgres"
-      }
-      env {
-        name  = "DATABASE_HOST"
-        value = var.database_container_app_host
-      }
-      env {
-        name  = "DATABASE_NAME"
-        value = var.database_name
-      }
-      env {
-        name  = "DATABASE_USER"
-        value = var.postgres_admin
-      }
-      env {
-        name  = "DATABASE_PORT"
-        value = var.database_port
-      }
-      env {
-        name  = "DATABASE_PASSWORD"
-        value = var.postgres_password
-      }
-      env {
-        name  = "OVERRIDE_DATABASE"
-        value = false
-      }
-      env {
-        name  = "DEBUG"
-        value = true
-      }
-      env {
-        name  = "FLOWISE_SECRETKEY_OVERWRITE"
-        value = var.flowise_secretkey_overwrite
-      }
+    volume {
+      name                 = "flowise"
+      mount_path           = "/opt/flowise/.flowise"
+      share_name           = azurerm_storage_share.share.name
+      storage_account_name = azurerm_storage_account.this.name
+      storage_account_key  = azurerm_storage_account.this.primary_access_key
     }
   }
-  ingress {
-    allow_insecure_connections = true
-    external_enabled           = true
-    target_port                = 3000
-    transport                  = "http"
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
+
+  container {
+    name   = "caddy"
+    image  = "caddy"
+    memory = "0.5"
+    cpu    = "0.5"
+
+    ports {
+      port     = 80
+      protocol = "TCP"
     }
+
+    ports {
+      port     = 443
+      protocol = "TCP"
+    }
+
+    commands = ["caddy", "reverse-proxy", "--from", "${var.project_name}.eastus2.azurecontainer.io", "--to", "localhost:3000"]
   }
 }
