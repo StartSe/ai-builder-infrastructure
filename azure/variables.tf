@@ -1,21 +1,21 @@
 
 variable "resource_group_name" {
   description = "Resource group name"
-  default = "rg-ai-exp-prod-eastus2"
+  default     = "rg-ai-exp-prod-eastus2"
 }
 variable "container_environment_name" {
   description = "Container environment name"
-  default = "cae-ai-builder-prod-east2"
+  default     = "cae-ai-builder-prod-east2"
 }
 
 variable "container_app_name" {
   description = "Container app name"
-  default = "ca-ai-builder-prod-east2"
+  default     = "ca-ai-builder-prod-east2"
 }
 
 variable "location" {
   description = "Service location"
-  default = "East US 2"
+  default     = "East US 2"
 }
 
 variable "project_name" {
@@ -88,10 +88,6 @@ variable "apikey_path" {
 
 variable "secretkey_path" {
   description = "value of the secretkey path"
-}
-
-variable "log_path" {
-  description = "value of the log path"
 }
 
 variable "blob_storage_path" {

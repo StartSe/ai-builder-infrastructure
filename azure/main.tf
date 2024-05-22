@@ -3,17 +3,8 @@ provider "azurerm" {
 }
 
 resource "azurerm_resource_group" "rg_prod" {
-  name              = var.resource_group_name
-  location          = var.location
-}
-
-resource "azurerm_container_app_environment" "cae_ai_builder" {
-  depends_on          = [azurerm_resource_group.rg_prod]
-  name                = var.container_environment_name
-  location            = azurerm_resource_group.rg_prod.location
-  resource_group_name = azurerm_resource_group.rg_prod.name
-
-  tags = {}
+  name     = var.resource_group_name
+  location = var.location
 }
 
 resource "azurerm_storage_account" "this" {
@@ -28,119 +19,88 @@ resource "azurerm_storage_account" "this" {
 }
 resource "azurerm_storage_share" "share" {
   name                 = "storageshare"
-  quota                = "200"
+  quota                = "1"
   storage_account_name = azurerm_storage_account.this.name
   depends_on           = [azurerm_storage_account.this]
 }
 
-
-resource "azurerm_container_app_environment_storage" "this" {
-  name                         = "mycontainerappstorage"
-  container_app_environment_id = azurerm_container_app_environment.cae_ai_builder.id
-  account_name                 = azurerm_storage_account.this.name
-  share_name                   = azurerm_storage_share.share.name
-  access_key                   = azurerm_storage_account.this.primary_access_key
-  access_mode                  = "ReadWrite"
-  depends_on                   = [azurerm_storage_account.this, azurerm_container_app_environment.cae_ai_builder, azurerm_storage_share.share]
-}
-
-
-
-
-resource "azurerm_container_app" "ca_ai_builder" {
-  depends_on                   = [azurerm_resource_group.rg_prod, azurerm_container_app_environment.cae_ai_builder, azurerm_container_app_environment_storage.this, azurerm_storage_share.share]
-  name                         = var.project_name
-  container_app_environment_id = azurerm_container_app_environment.cae_ai_builder.id
-  resource_group_name          = azurerm_resource_group.rg_prod.name
-  revision_mode                = "Single"
-
-  tags = {
-    Environment = "Prod"
-    Tier        = "web"
-  }
-
-  template {
-    min_replicas = 1
-    max_replicas = 1
-    container {
-      name   = var.container_app_name
-      image  = var.source_image
-      cpu    = 0.25
-      memory = "0.5Gi"
-      env {
-        name  = "PORT"
-        value = "3000"
-      }
-      env {
-        name  = "PASSPHRASE"
-        value = var.passphrase
-      }
-      env {
-        name  = "LOG_LEVEL"
-        value = "DEBUG"
-      }
-      env {
-        name  = "FLOWISE_USERNAME"
-        value = var.flowise_username
-      }
-      env {
-        name  = "FLOWISE_PASSWORD"
-        value = var.flowise_password
-      }
-      env {
-        name  = "OVERRIDE_DATABASE"
-        value = false
-      }
-      env {
-        name  = "DEBUG"
-        value = true
-      }
-      env {
-        name  = "FLOWISE_SECRETKEY_OVERWRITE"
-        value = var.flowise_secretkey_overwrite
-      }
-      env {
-        name  = "DATABASE_PATH"
-        value = var.database_path
-      }
-      env {
-        name  = "APIKEY_PATH"
-        value = var.apikey_path
-
-      }
-      env {
-        name  = "SECRETKEY_PATH"
-        value = var.secretkey_path
-      }
-      env {
-
-        name  = "LOG_PATH"
-        value = var.log_path
-      }
-      env {
-        name  = "BLOB_STORAGE_PATH"
-        value = var.blob_storage_path
-      }
-      volume_mounts {
-        name = azurerm_storage_share.share.name
-
-        path = "/${azurerm_storage_share.share.name}"
-      }
+resource "azurerm_container_group" "flowise" {
+  name                = var.project_name
+  resource_group_name = azurerm_resource_group.rg_prod.name
+  location            = azurerm_resource_group.rg_prod.location
+  ip_address_type     = "Public"
+  os_type             = "Linux"
+  dns_name_label      = var.project_name
+  exposed_port = [
+    {
+      port     = 80
+      protocol = "TCP"
+    },
+    {
+      port     = 443
+      protocol = "TCP"
     }
+  ]
+
+  container {
+    name   = var.container_app_name
+    image  = var.source_image
+    cpu    = "0.5"
+    memory = "1.5"
+
+    commands = [
+      "/bin/sh",
+      "-c",
+      "pnpm start"
+    ]
+    ports {
+      port     = 3000
+      protocol = "TCP"
+    }
+    environment_variables = {
+      PORT                        = 3000
+      PASSPHRASE                  = var.passphrase
+      LOG_LEVEL                   = "DEBUG"
+      FLOWISE_USERNAME            = var.flowise_username
+      FLOWISE_PASSWORD            = var.flowise_password
+      OVERRIDE_DATABASE           = false
+      DEBUG                       = true
+      FLOWISE_SECRETKEY_OVERWRITE = var.flowise_secretkey_overwrite
+      DATABASE_PATH               = var.database_path
+      APIKEY_PATH                 = var.apikey_path
+      SECRETKEY_PATH              = var.secretkey_path
+      BLOB_STORAGE_PATH           = var.blob_storage_path
+      FLOWISE_USERNAME            = var.flowise_username
+      FLOWISE_PASSWORD            = var.flowise_password
+      PASSPHRASE                  = var.passphrase
+      TESTE                       = "TESTE"
+    }
+
     volume {
-      name         = azurerm_storage_share.share.name
-      storage_type = "AzureFile"
-      storage_name = azurerm_container_app_environment_storage.this.name
+      name                 = "flowise"
+      mount_path           = "/opt/flowise/.flowise"
+      share_name           = azurerm_storage_share.share.name
+      storage_account_name = azurerm_storage_account.this.name
+      storage_account_key  = azurerm_storage_account.this.primary_access_key
     }
   }
-  ingress {
-    allow_insecure_connections = true
-    external_enabled           = true
-    target_port                = 3000
-    transport                  = "http"
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
+
+  container {
+    name   = "caddy"
+    image  = "caddy"
+    memory = "0.5"
+    cpu    = "0.5"
+
+    ports {
+      port     = 80
+      protocol = "TCP"
     }
+
+    ports {
+      port     = 443
+      protocol = "TCP"
+    }
+
+    commands = ["caddy", "reverse-proxy", "--from", "${var.project_name}.eastus2.azurecontainer.io", "--to", "localhost:3000"]
   }
 }
